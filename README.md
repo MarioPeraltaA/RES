@@ -1,7 +1,7 @@
 ## Modeling and Simulation of Integrated Energy Systems
 
 
-> The modeling of energy systems allows the creation of scenarios that seek to provide inputs on the most cost-effective transformations to supply energy demand. In general, energy models are developed with the objective of building a long-term sustainable economy, through the synergy of technical aspects of the production processes in the countries where they are developed, the temporal and spatial behavior of energy sources, the demand requirements to be satisfied, the use of optimization techniques, the inclusion of commercial and industrial interests, the formulation of public policies and the study of anthropological aspects. [[1]](https://www.open.edu/openlearncreate/course/view.php?id=6817).
+> The modeling of energy systems allows the creation of scenarios that seek to provide inputs on the most cost-effective transformations to supply energy demand. In general, energy models are developed with the objective of building a long-term sustainable economy, through the synergy of technical aspects of the production processes in the countries where they are developed, the temporal and spatial behavior of energy sources, the demand requirements to be satisfied, the use of optimization techniques, the inclusion of commercial and industrial interests, the formulation of public policies and the study of anthropological aspects [[1]](https://www.open.edu/openlearncreate/course/view.php?id=6817).
 
 
 ---
