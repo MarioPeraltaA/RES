@@ -32,12 +32,12 @@ E ==> F(Results)
 
 ### References 
 
-[1] [Sielac-OLADE](https://sielac.olade.org/)
+[1] [Energy and Flexibility Modelling: OSeMOSYS & FlexTool](https://www.open.edu/openlearncreate/course/view.php?id=6817)
 
-[2] [OSeMOSYS’ documentation!](https://osemosys.readthedocs.io/en/latest/index.html)
 
-[3] [Energy and Flexibility Modelling: OSeMOSYS & FlexTool](https://www.open.edu/openlearncreate/course/view.php?id=6817)
+[2] [Sielac-OLADE](https://sielac.olade.org/)
 
+[3] [OSeMOSYS’ documentation!](https://osemosys.readthedocs.io/en/latest/index.html)
 
 ---
 
