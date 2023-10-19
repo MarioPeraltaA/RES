@@ -93,6 +93,8 @@ class EnergyMatrix():
             matrix_df.columns = matrix_df.columns.str.strip()
             # Remove white space in register
             matrix_df["Sectors"] = matrix_df["Sectors"].str.strip()
+            # Replace np.NaN obj for 0.0 float type
+            matrix_df.fillna(0.0, inplace=True)
 
         self.matrix = dict_df
         return dict_df
@@ -131,119 +133,45 @@ class EnergyMatrix():
             for comm in matrix_df.columns:
                 comm_label = set_commodity_labels(comm)
                 if comm_label:
-                    sector, comm_code = comm_label
-                    # Primmary commodity
-                    if sector == "Fuel":
-                        for n, r in enumerate(matrix_df["Sectors"]):
-                            t_label = set_technology_labels(r)
-                            if t_label:
-                                cat, tech_code = t_label
-                                if cat == "SUP":
-                                    if type(tech_code) is list:
-                                        tech_code = tech_code[0]    # MIN
-                                    # Commodity code
-                                    comm_c = f"{comm_code}{label_region}"
-                                    # Technology code
-                                    tech_c = f"{tech_code}{comm_c}"
-                                    # Energy in PJ
-                                    energy = matrix_df[comm][n]
-                                    # Creat and add instance
+                    _, comm_code = comm_label
+                    # Commodity code
+                    comm_c = f"{comm_code}{label_region}"
+                    for n, r in enumerate(matrix_df["Sectors"]):
+                        t_label = set_technology_labels(r)
+                        if t_label:
+                            cat, tech_code = t_label
+                            if (cat == "SUP" and type(tech_code) is list):
+                                if comm_code == "ELC":
+                                    tech_code = tech_code[1]    # PWR
+                                else:
+                                    tech_code = tech_code[0]    # MIN
+                            # Technology code
+                            tech_c = f"{tech_code}{comm_c}"
+                            # Energy in PJ
+                            energy = matrix_df[comm][n]
+                            # Creat and add instances
+                            if cat == "SUP":
+                                C = self.add_out_commodity(comm_c, energy)
+                                _ = self.add_prim_tech(tech_c, C)
+                            elif cat == "WAS":
+                                waste_tech = [w for w in self.technologies
+                                                if (isinstance(w, Primary_Tech)
+                                                    and w.code == tech_c)]
+                                # Update instance
+                                if waste_tech:
+                                    w_t = waste_tech[0]
+                                    w_t.output_commodity.energy_PJ += energy
+                                # Creat instance
+                                else:
                                     C = self.add_out_commodity(comm_c, energy)
                                     _ = self.add_prim_tech(tech_c, C)
-                                elif cat == "WAS":
-                                    # Commodity code
-                                    comm_c = f"{comm_code}{label_region}"
-                                    # Technology code
-                                    tech_c = f"{tech_code}{comm_c}"
-                                    energy = matrix_df[comm][n]
-                                    waste_tech = [w for w in self.technologies
-                                                  if (isinstance(w, Primary_Tech)
-                                                      and w.code == tech_c)]
-                                    # Update instance
-                                    if waste_tech:
-                                        w_t = waste_tech[0]
-                                        w_t.output_commodity.energy_PJ += energy
-
-                                    # Creat instance
-                                    else:
-                                        C = self.add_out_commodity(comm_c, energy)
-                                        _ = self.add_prim_tech(tech_c, C)
-                                else:
-                                    # Commodity code
-                                    comm_c = f"{comm_code}{label_region}"
-                                    # Technology code
-                                    tech_c = f"{tech_code}{comm_c}"
-                                    # Energy in PJ
-                                    energy = matrix_df[comm][n]
-                                    # Creat and add instance
-                                    Cin = self.add_in_commodity(comm_c, energy)
-                                    Cout = self.add_out_commodity(comm_c, -energy)
-                                    _ = self.add_sec_tech(tech_c, Cin, Cout)
                             else:
-                                continue
-                    # Secondary commodity
-                    elif sector == "Commodity":
-                        for n, r in enumerate(matrix_df["Sectors"]):
-                            t_label = set_technology_labels(r)
-                            if t_label:
-                                cat, tech_code = t_label
-                                if cat == "SUP":
-                                    # Power sector as Secondary Tech
-                                    if type(tech_code) is list:
-                                        tech_code = tech_code[1]   # PWR
-                                        # Commodity code
-                                        comm_c = f"{comm_code}{label_region}"
-                                        # Technology code
-                                        tech_c = f"{tech_code}{comm_c}"
-                                        # Energy in PJ
-                                        energy = matrix_df[comm][n]
-                                        # Creat and add instance
-                                        Cin = self.add_in_commodity(comm_c, energy)
-                                        Cout = self.add_out_commodity(comm_c, -energy)
-                                        _ = self.add_sec_tech(tech_c, Cin, Cout)
-                                    # Primary technology
-                                    else:
-                                        # Commodity code
-                                        comm_c = f"{comm_code}{label_region}"
-                                        # Technology code
-                                        tech_c = f"{tech_code}{comm_c}"
-                                        # Energy in PJ
-                                        energy = matrix_df[comm][n]
-                                        # Creat and add instance
-                                        C = self.add_out_commodity(comm_c, energy)
-                                        _ = self.add_prim_tech(tech_c, C)
-                                elif cat == "WAS":
-                                    # Commodity code
-                                    comm_c = f"{comm_code}{label_region}"
-                                    # Technology code
-                                    tech_c = f"{tech_code}{comm_c}"
-                                    energy = matrix_df[comm][n]
-                                    waste_tech = [w for w in self.technologies
-                                                  if (isinstance(w, Primary_Tech)
-                                                      and w.code == tech_c)]
-                                    # Update instance
-                                    if waste_tech:
-                                        w_t = waste_tech[0]
-                                        w_t.output_commodity.energy_PJ += energy
-
-                                    # Creat instance
-                                    else:
-                                        C = self.add_out_commodity(comm_c, energy)
-                                        _ = self.add_prim_tech(tech_c, C)
-                                else:
-                                    # Commodity code
-                                    comm_c = f"{comm_code}{label_region}"
-                                    # Technology code
-                                    tech_c = f"{tech_code}{comm_c}"
-                                    # Energy in PJ
-                                    energy = matrix_df[comm][n]
-                                    # Creat and add instance
-                                    Cin = self.add_in_commodity(comm_c, energy)
-                                    Cout = self.add_out_commodity(comm_c, -energy)
-                                    _ = self.add_sec_tech(tech_c, Cin, Cout)
-
-                            else:
-                                continue
+                                # Creat and add instance
+                                Cin = self.add_in_commodity(comm_c, energy)
+                                Cout = self.add_out_commodity(comm_c, -energy)
+                                _ = self.add_sec_tech(tech_c, Cin, Cout)
+                        else:
+                            continue
                 else:
                     continue
 
