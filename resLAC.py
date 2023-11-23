@@ -11,10 +11,12 @@ at the tail of the code (label) as follows:
     [category][sector][fuel/commodity][###][region]
 
 e.g. for "Crude oil extraction" kind of technology in
-"Argentina" the generic convention label is: ``MINOILARG``
+"Argentina" the generic convention label is: ``MINCRUARG``
 
 Author: Mario R. Peralta. A.
-The Electric Power and Energy Research Laboratory (EPERLab)
+email: mario.peralta@ucr.ac.cr
+The Electric Power and Energy Research Laboratory (EPERLab).
+
 """
 import pandas as pd
 import copy
@@ -36,6 +38,19 @@ class Technology():
         cat = self.category
         return f"({cat}, {c}, {r})"
 
+    def __eq__(self, other) -> bool:
+        m_type = type(self)
+        n_type = type(other)
+        m_cat = self.category
+        n_cat = other.category
+        m_c = self.code
+        n_c = other.code
+        m_r = self.region
+        n_r = other.region
+        self_ft = {m_type, m_cat, m_c, m_r}
+        other_ft = {n_type, n_cat, n_c, n_r}
+
+        return self_ft == other_ft
 
 class Primary_Tech(Technology):
 
@@ -83,48 +98,65 @@ class Demand_Tech(Technology):
 
 class Fuel():
 
-    def __init__(self, code: str, energy: float):
+    def __init__(self, code: str, energy: float, region: str):
         self.code = code
         self.energy_PJ = energy
+        self.region = region
 
     def __repr__(self) -> str:
-        return f"{self.code}"
+        c = self.code
+        r = self.region
+        return f"({c}, {r})"
 
+    def __eq__(self, other) -> bool:
+        m_type = type(self)
+        n_type = type(other)
+        m_c = self.code
+        n_c = other.code
+        m_r = self.region
+        n_r = other.region
+        self_ft = {m_type, m_c, m_r}
+        other_ft = {n_type, n_c, n_r}
+        return self_ft == other_ft
 
 class Primary_Fuel(Fuel):
 
-    def __init__(self, code: str, energy: float):
-        super().__init__(code, energy)
+    def __init__(self, code: str, energy: float, region: str):
+        super().__init__(code, energy, region)
 
 
 class Second_Fuel(Fuel):
 
-    def __init__(self, code: str, energy: float):
-        super().__init__(code, energy)
+    def __init__(self, code: str, energy: float, region: str):
+        super().__init__(code, energy, region)
 
 
 class Third_Fuel(Fuel):
 
-    def __init__(self, code: str, energy: float):
-        super().__init__(code, energy)
+    def __init__(self, code: str, energy: float, region: str):
+        super().__init__(code, energy, region)
 
 
 class Supply_Fuel(Fuel):
 
     def __init__(self,
+                 order: int,
                  code: str,
-                 energy: float,
-                 order: int):
-        super().__init__(code, energy)
+                 energy: float, region: str):
+        super().__init__(code, energy, region)
         self.order = order
 
 
 class EnergyMatrix():
 
     def __init__(self):
-        self.matrix = {}      # Data
+        self.matrix = {}    # Balance matrix
+        self.res = {}       # Merge capacities & balance
         self.techs = []
         self.fuels = []
+        self.labels = []    # To instance capacities fuels
+        self._techs = []    # Intances to be updated
+        self._fuels = []    # Intances to be updated
 
     def read_data(self, path: str = "./data/matrix.xlsx") -> dict:
         """Read Energetic Balance Matrix data.
@@ -150,9 +182,9 @@ class EnergyMatrix():
         self.matrix = dict_df
         return dict_df
 
-    def read_potential(self,
-                       path: str = "./data/potential.xlsx") -> dict:
-        """Read Potential Matrix data.
+    def read_base(self,
+                  path: str = "./data/capacities.xlsx") -> dict:
+        """Read Capacities Matrix data.
 
         It reads binary matrix:
             - ``1`` there is a likelihood the technology
@@ -175,7 +207,7 @@ class EnergyMatrix():
             # Replace all np.NaN obj for 0.0 float type
             matrix_df.fillna(0.0, inplace=True)
 
-        self.matrix = dict_df
+        self.res = dict_df
         return dict_df
 
     def add_prim_tech(self,
@@ -203,111 +235,155 @@ class EnergyMatrix():
         self.techs.append(demand_tech)
         return demand_tech
 
+    def set_prim_tech(self,
+                      tech_code,
+                      region,
+                      category,
+                      matrix_df,
+                      n) -> Primary_Tech:
+        tech = self.add_prim_tech(tech_code, region, category)
+        # Add all output primary fuels to this same instance
+        for field in matrix_df.columns:
+            fuelID = set_fuel_labels(field)
+            if not fuelID:
+                continue
+            sector, fuel_code = fuelID
+            if tech_code == "PRO" and sector in {"FUE002", "FUE003"}:
+                continue
+            energy = matrix_df[field][n]
+            if tech_code in {"EXP", "WAS"}:
+                energy = -energy    # Negative
+            fuel = self.add_fuel(sector, fuel_code, energy, region)
+            tech.out_fuels.append(fuel)
+
+        return tech
+
+    def set_conv_tech(self,
+                      tech_code,
+                      region,
+                      category,
+                      matrix_df,
+                      n) -> Convertion_Tech:
+        tech = self.add_conv_tech(tech_code, region, category)
+        for field in matrix_df.columns:
+            fuelID = set_fuel_labels(field)
+            if not fuelID:
+                continue
+            sector, fuel_code = fuelID
+            # Primary fuel as inputs only
+            if category == "UPS001":
+                if sector == "FUE003":
+                    continue
+                energy = matrix_df[field][n]
+                fuel = self.add_fuel(sector, fuel_code, energy, region)
+                # Input
+                if sector == "FUE001":
+                    tech.in_fuels.append(fuel)
+                # Output
+                elif sector == "FUE002":
+                    tech.out_fuels.append(fuel)
+
+            elif category == "UPS002":
+                if sector == "FUE003":
+                    continue
+                energy = matrix_df[field][n]
+                fuel = self.add_fuel(sector, fuel_code, energy, region)
+                tech.in_fuels.append(fuel)
+                if sector == "FUE002":
+                    fuel = copy.deepcopy(fuel)
+                    tech.out_fuels.append(fuel)
+
+            elif category == "UPS003":
+                energy = matrix_df[field][n]
+                fuel = self.add_fuel(sector, fuel_code, energy, region)
+                if sector == "FUE003":
+                    tech.out_fuels.append(fuel)
+                else:
+                    tech.in_fuels.append(fuel)
+
+        return tech
+
+    def set_demand_tech(self,
+                        tech_code,
+                        region,
+                        category,
+                        matrix_df,
+                        n) -> Demand_Tech:
+        tech = self.add_demand_tech(tech_code, region, category)
+        for field in matrix_df.columns:
+            fuelID = set_fuel_labels(field)
+            if not fuelID:
+                continue
+            sector, fuel_code = fuelID
+            energy = -matrix_df[field][n]   # Negative as input
+            fuel = self.add_fuel(sector, fuel_code, energy, region)
+            tech.in_fuels.append(fuel)
+
+        return tech
+
     def add_tech(self,
                  tech_code: str,
                  region: str,
                  category: str,
                  matrix_df: pd.DataFrame,
                  n: int) -> Technology:
+        """Creat and add technology instance.
+ 
+        """
         # Primary tech
         if category in {"SUP", "LOS001"}:
-            tech = self.add_prim_tech(tech_code, region, category)
-            # Add all output primary fuels to this same instance
-            for field in matrix_df.columns:
-                fuelID = set_fuel_labels(field)
-                if not fuelID:
-                    continue
-                sector, fuel_code = fuelID
-                if tech_code == "PRO" and sector in {"FUE002", "FUE003"}:
-                    continue
-                energy = matrix_df[field][n]
-                if tech_code in {"EXP", "WAS"}:
-                    energy = -energy    # Negative
-                fuel = self.add_fuel(sector, fuel_code, energy)
-                tech.out_fuels.append(fuel)
+            tech = self.set_prim_tech(tech_code,
+                                      region,
+                                      category,
+                                      matrix_df,
+                                      n)
 
         # Convertion tech
         elif category in {"UPS001", "UPS002", "UPS003"}:
-            tech = self.add_conv_tech(tech_code, region, category)
-            for field in matrix_df.columns:
-                fuelID = set_fuel_labels(field)
-                if not fuelID:
-                    continue
-                sector, fuel_code = fuelID
-                # Primary fuel as inputs only
-                if category == "UPS001":
-                    if sector == "FUE003":
-                        continue
-                    energy = matrix_df[field][n]
-                    fuel = self.add_fuel(sector, fuel_code, energy)
-                    # Input
-                    if sector == "FUE001":
-                        tech.in_fuels.append(fuel)
-                    # Output
-                    elif sector == "FUE002":
-                        tech.out_fuels.append(fuel)
-
-                elif category == "UPS002":
-                    if sector == "FUE003":
-                        continue
-                    energy = matrix_df[field][n]
-                    fuel = self.add_fuel(sector, fuel_code, energy)
-                    tech.in_fuels.append(fuel)
-                    if sector == "FUE002":
-                        fuel = copy.deepcopy(fuel)
-                        tech.out_fuels.append(fuel)
-
-                elif category == "UPS003":
-                    energy = matrix_df[field][n]
-                    fuel = self.add_fuel(sector, fuel_code, energy)
-                    if sector == "FUE003":
-                        tech.out_fuels.append(fuel)
-                    else:
-                        tech.in_fuels.append(fuel)
+            tech = self.set_conv_tech(tech_code,
+                                      region,
+                                      category,
+                                      matrix_df,
+                                      n)
 
 
         # Demand tech
         elif category in {"DEM", "LOS002"}:
-            tech = self.add_demand_tech(tech_code, region, category)
-            for field in matrix_df.columns:
-                fuelID = set_fuel_labels(field)
-                if not fuelID:
-                    continue
-                sector, fuel_code = fuelID
-                energy = -matrix_df[field][n]   # Negative as input
-                fuel = self.add_fuel(sector, fuel_code, energy)
-                tech.in_fuels.append(fuel)
-
+            tech = self.set_demand_tech(tech_code,
+                                        region,
+                                        category,
+                                        matrix_df,
+                                        n)
         return tech
 
-    def add_prim_fuel(self, code, energy) -> Primary_Fuel:
-        prim_fuel = Primary_Fuel(code, energy)
+    def add_prim_fuel(self, code, energy, region) -> Primary_Fuel:
+        prim_fuel = Primary_Fuel(code, energy, region)
         self.fuels.append(prim_fuel)
         return prim_fuel
 
-    def add_sec_fuel(self, code, energy) -> Second_Fuel:
-        sec_fuel =  Second_Fuel(code, energy)
+    def add_sec_fuel(self, code, energy, region) -> Second_Fuel:
+        sec_fuel =  Second_Fuel(code, energy, region)
         self.fuels.append(sec_fuel)
         return sec_fuel
 
-    def add_third_fuel(self, code, energy) -> Third_Fuel:
-        third_fuel = Third_Fuel(code, energy)
+    def add_third_fuel(self, code, energy, region) -> Third_Fuel:
+        third_fuel = Third_Fuel(code, energy, region)
         self.fuels.append(third_fuel)
         return third_fuel
 
     def add_fuel(self,
                  sector: str,
                  fuel_code: str,
-                 energy: float) -> Fuel:
+                 energy: float, region: str) -> Fuel:
         # Primary fuel
         if sector == "FUE001":
-            fuel = self.add_prim_fuel(fuel_code, energy)
+            fuel = self.add_prim_fuel(fuel_code, energy, region)
         # Second fuel
         elif sector == "FUE002":
-            fuel = self.add_sec_fuel(fuel_code, energy)
+            fuel = self.add_sec_fuel(fuel_code, energy, region)
         # Third fuel
         elif sector == "FUE003":
-            fuel = self.add_third_fuel(fuel_code, energy)
+            fuel = self.add_third_fuel(fuel_code, energy, region)
         return fuel
 
     def add_supply_tech(self):
@@ -330,15 +406,11 @@ class EnergyMatrix():
                 if f.energy_PJ < 0:
                     f.energy_PJ = 0
 
-    def set_potential(self) -> list[Technology]:
-        """Intances.
-
-        Initial RES with space in memory for those
-        technology that has some potential to describe
-        somehow the energy system.
+    def obj_labels(self) -> list[tuple[str]]:
+        """Set objects labels to be instanced.
 
         """
-        dict_df = self.read_potential()
+        dict_df = self.read_base()
         # Iterate over data
         for country, matrix_df in dict_df.items():
             region = country.split(" - ")[1]
@@ -349,17 +421,180 @@ class EnergyMatrix():
                 if not techID:
                     continue
                 category, tech_code = techID
-                tech = self.add_tech(tech_code,
-                                     region,
-                                     category,
-                                     matrix_df,
-                                     n)
-        # UPS002 flow
-        self.split_flow()
-        return self.techs
+                for field in matrix_df.columns:
+                    fuelID = set_fuel_labels(field)
+                    if fuelID:
+                        sector, fuel_code = fuelID
+                        energy = matrix_df[field][n]
+                        if energy:
+                            fuel_str = (category,
+                                        tech_code,
+                                        sector,
+                                        fuel_code,
+                                        region)
+                            self.labels.append(fuel_str)
 
+        return self.labels
+
+    def add_ifuel(self, sector, fuel_code, region) -> Fuel:
+        """Initial fuels.
+
+        """
+        energy = 0   # Initial value
+        if sector == "FUE001":
+            fuel = Primary_Fuel(fuel_code, energy, region)
+        elif sector == "FUE002":
+            fuel = Second_Fuel(fuel_code, energy, region)
+        elif sector == "FUE003":
+            fuel = Third_Fuel(fuel_code, energy, region)
+
+        self._fuels.append(fuel)
+        return fuel
+
+    def add_itech(self,
+                  category,
+                  tech_code,
+                  region) -> Technology:
+        # Primary tech
+        if category in {"SUP", "LOS001"}:
+            tech = Primary_Tech(tech_code, region, category)
+        # Convertion tech
+        elif category in {"UPS001", "UPS002", "UPS003"}:
+            tech = Convertion_Tech(tech_code, region, category)
+        # Demand tech
+        elif category in {"DEM", "LOS002"}:
+            tech = Demand_Tech(tech_code, region, category)
+
+        self._techs.append(tech)
+        return tech
+
+    def prim_tech_flow(self,
+                       tech: Technology,
+                       obj_labels: list[tuple[str]]) -> Primary_Tech:
+        # Output
+        tech_code = tech.code
+        region = tech.region
+        filter = {tech_code,
+                  region,
+                  "FUE001",
+                  "FUE002",
+                  "FUE003"}
+        out_fuels = list({ft for ft in obj_labels
+                         if {ft[1], ft[2], ft[-1]}.issubset(filter)})
+        out_fuels = [self.add_ifuel(s, f, r)
+                     for _, _, s, f, r in out_fuels]
+        tech.out_fuels = out_fuels
+
+        return tech
+
+    def conv_tech_flow(self,
+                       tech: Technology,
+                       obj_labels: list[tuple[str]]) -> Convertion_Tech:
+        category = tech.category
+        tech_code = tech.code
+        region = tech.region
+
+        if category == "UPS001":
+            # Input
+            in_filter = {tech_code, "FUE001", region}
+            in_fuels = list({ft for ft in obj_labels
+                             if {ft[1], ft[2], ft[-1]}.issubset(in_filter)})
+            in_fuels = [self.add_ifuel(s, f, r)
+                        for _, _, s, f, r in in_fuels]
+            tech.in_fuels = in_fuels
+            # Output
+            out_filter = {tech_code, "FUE002", region}
+            out_fuels = list({ft for ft in obj_labels
+                              if {ft[1], ft[2], ft[-1]}.issubset(out_filter)})
+            out_fuels = [self.add_ifuel(s, f, r)
+                         for _, _, s, f, r in out_fuels]
+            tech.out_fuels = out_fuels
+
+        elif category == "UPS002":
+            # Input: for negative values of FUE002
+            in_filter = {tech_code, "FUE001", "FUE002", region}
+            in_fuels = list({ft for ft in obj_labels
+                          if {ft[1], ft[2], ft[-1]}.issubset(in_filter)})
+            in_fuels = [self.add_ifuel(s, f, r)
+                        for _, _, s, f, r in in_fuels]
+            tech.in_fuels = in_fuels
+            # Output: for positive values of FUE002
+            out_filter = {tech_code, "FUE002", region}
+            out_fuels = list({ft for ft in obj_labels
+                          if {ft[1], ft[2], ft[-1]}.issubset(out_filter)})
+            out_fuels = [self.add_ifuel(s, f, r)
+                         for _, _, s, f, r in out_fuels]
+            tech.out_fuels = out_fuels
+
+        elif category == "UPS003":
+            # Input
+            in_filter = {tech_code, "FUE001", "FUE002", region}
+            in_fuels = list({ft for ft in obj_labels
+                             if {ft[1], ft[2], ft[-1]}.issubset(in_filter)})
+            in_fuels = [self.add_ifuel(s, f, r)
+                        for _, _, s, f, r in in_fuels]
+            tech.in_fuels = in_fuels
+            # Output
+            out_filter = {tech_code, "FUE003", region}
+            out_fuels = list({ft for ft in obj_labels
+                              if {ft[1], ft[2], ft[-1]}.issubset(out_filter)})
+            out_fuels = [self.add_ifuel(s, f, r)
+                         for _, _, s, f, r in out_fuels]
+            tech.out_fuels = out_fuels
+
+        return tech
+
+    def dem_tech_flow(self,
+                      tech: Technology,
+                      obj_labels: list[tuple[str]]) -> Demand_Tech:
+        
+        # Income only
+        tech_code = tech.code
+        region = tech.region
+        in_filter = {tech_code,
+                     "FUE001",
+                     "FUE002",
+                     "FUE003",
+                     region}
+        in_fuels = list({ft for ft in obj_labels
+                     if {ft[1], ft[2], ft[-1]}.issubset(in_filter)})
+        in_fuels = [self.add_ifuel(s, f, r)
+                    for _, _, s, f, r in in_fuels]
+        tech.in_fuels = in_fuels
+        return tech
+
+    def initital_RES(self) -> list[Technology]:
+        """Instances.
+
+        Initial RES with space in memory for those
+        technology that has some capacities to describe
+        somehow the energy system.
+        It initializes fuel flows in zero.
+
+        """
+        obj_labels = self.obj_labels()
+        # Filter techs
+        techs = list({(ft[0], ft[1], ft[-1]) for ft in obj_labels})
+        # Add techs
+        for category, tech_code, region in techs:
+            tech = self.add_itech(category, tech_code, region)
+            # Add initial fuels
+            if category in {"SUP", "LOS001"}:
+                tech = self.prim_tech_flow(tech, obj_labels)
+            elif category in {"UPS001", "UPS002", "UPS003"}:
+                tech = self.conv_tech_flow(tech, obj_labels)
+            elif category in {"DEM", "LOS002"}:
+                tech = self.dem_tech_flow(tech, obj_labels)
+
+        return self._techs
 
     def data_RES(self) -> list[Technology]:
+        """It intances all possible fuels.
+
+        It reads throughout the Energetic
+        Balance Matrix data.
+
+        """
         dict_df = self.read_data()
         # Iterate over data
         for country, matrix_df in dict_df.items():
@@ -380,12 +615,37 @@ class EnergyMatrix():
         self.split_flow()
         return self.techs
 
-    def build_RES(self, region: str) -> list[Technology]:
-        # Allocate outpus of UPS{001, 002, 003}
-        # Sign convention
-        # Define supply nodes
-        # Define supply fuels
-        pass
+    def build_RES(self) -> list[Technology]:
+        """Update energy flow attributes.
+
+        It sets the actual values of flowing fuels
+        per country. Merge.
+
+        """
+        itechs = self.initital_RES()
+        techs = self.data_RES()
+        for T in itechs:
+            t = techs[techs.index(T)]
+            if T.category in {"SUP", "LOS001"}:
+                for f in T.out_fuels:
+                    out_fuel = t.out_fuels[t.out_fuels.index(f)]
+                    f.energy_PJ = out_fuel.energy_PJ
+
+            elif T.category in {"UPS001", "UPS002", "UPS003"}:
+                for f in T.in_fuels:
+                    in_fuel = t.in_fuels[t.in_fuels.index(f)]
+                    f.energy_PJ = in_fuel.energy_PJ
+
+                for f in T.out_fuels:
+                    out_fuel = t.out_fuels[t.out_fuels.index(f)]
+                    f.energy_PJ = out_fuel.energy_PJ
+
+            elif T.category in {"DEM", "LOS002"}:
+                for f in T.in_fuels:
+                    in_fuel = t.in_fuels[t.in_fuels.index(f)]
+                    f.energy_PJ = in_fuel.energy_PJ
+
+        return itechs
 
 
 def set_region(country: str) -> str:
