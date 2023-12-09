@@ -1,20 +1,22 @@
-"""Data processor and shaper of Energy Matrix Balance.
+"""Setup RES from the Energetic Matrix Balance.
 
-This module integrates the Latin America and Caribbean
-Energy Matrix Balance and sort out its data in a
-OSeMOSYS model structure.
+This module setup the technologies and fuels attributes
+and values availables in the Energetic Matrix Balance
+of any country following the OSeMOSYS naming convention.
 
 Note: According to the naming convention used by OSeMOSYS
-a 3-letter country abbreviation will be adopted and added
-at the tail of the code (label) as follows:
+a 3-letter country abbreviation will be adopted in front
+of the code (label) as follows:
 
-    [category][sector][fuel/commodity][###][region]
+    [region][category][sector][fuel/commodity][###]
 
 e.g. for "Crude oil extraction" kind of technology in
-"Argentina" the generic convention label is: ``MINCRUARG``
+"Argentina" the generic convention label is: ``ARGPROCRU``
+This module also takes into account the Capacity matrix
+of any country.
 
 Author: Mario R. Peralta. A.
-email: mario.peralta@ucr.ac.cr
+email: Mario.Peralta@ucr.ac.cr
 The Electric Power and Energy Research Laboratory (EPERLab).
 
 """
@@ -52,6 +54,42 @@ class Technology():
 
         return self_ft == other_ft
 
+    def __add__(self, other):
+        """LOSTEC: LOS001, LOS002.
+
+        """
+        if type(self) == type(other):
+            # Operate
+            s_code = self.code
+            o_code = other.code
+            tech_set = {s_code, o_code}
+            # Primary loss tech
+            if tech_set == {"INV", "WAS"}:
+                for f in self.out_fuels:
+                    energy = other.out_fuels[
+                        other.out_fuels.index(f)
+                    ].energy_PJ
+                    f.energy_PJ += energy
+                return self
+
+            # Demand loss tech
+            elif tech_set == {"OWN", "LOS"}:
+                for f in self.in_fuels:
+                    energy = other.in_fuels[
+                        other.in_fuels.index(f)
+                    ].energy_PJ
+                    f.energy_PJ += energy
+                return self
+
+            else:
+                print("LOSTEC: LOS001 or LOS002 only.")
+                return None
+
+        else:
+            print(f"TypeError: Different categories")
+            return None
+
+
 class Primary_Tech(Technology):
 
     def __init__(self,
@@ -59,7 +97,7 @@ class Primary_Tech(Technology):
                  region: str,
                  category: str):
         super().__init__(label, region, category)
-        self.out_fuels = []    # Primaries
+        self.out_fuels = []
 
 
 class Supply_Tech(Technology):
@@ -98,7 +136,10 @@ class Demand_Tech(Technology):
 
 class Fuel():
 
-    def __init__(self, code: str, energy: float, region: str):
+    def __init__(
+            self, code: str,
+            energy: float, region: str
+    ):
         self.code = code
         self.energy_PJ = energy
         self.region = region
@@ -547,7 +588,7 @@ class EnergyMatrix():
     def dem_tech_flow(self,
                       tech: Technology,
                       obj_labels: list[tuple[str]]) -> Demand_Tech:
-        
+
         # Income only
         tech_code = tech.code
         region = tech.region
@@ -615,7 +656,7 @@ class EnergyMatrix():
         self.split_flow()
         return self.techs
 
-    def build_RES(self) -> list[Technology]:
+    def fill_RES(self) -> list[Technology]:
         """Update energy flow attributes.
 
         It sets the actual values of flowing fuels
@@ -646,6 +687,44 @@ class EnergyMatrix():
                     f.energy_PJ = in_fuel.energy_PJ
 
         return itechs
+
+    def sum_prim_loss_tech(self, techs: list) -> None:
+        # Filter regions
+        regions = list({T.region for T in techs})
+        # Operate WAS & INV techs for each region
+        for r in regions:
+            was_tech = [T for T in techs
+                        if all((T.code=="WAS", T.region==r))][0]
+            inv_tech = [T for T in techs
+                        if all((T.code=="INV", T.region==r))][0]
+            # Operate
+            _ = was_tech + inv_tech
+            # Remove INV tech
+            self._techs.remove(inv_tech)
+
+    def sum_sec_loss_tech(self, techs: list) -> None:
+        # Filter regions
+        regions = list({T.region for T in techs})
+        # Operate OWN & LOS techs for each region
+        for r in regions:
+            own_tech = [T for T in techs
+                        if all((T.code=="OWN", T.region==r))][0]
+            los_tech = [T for T in techs
+                        if all((T.code=="LOS", T.region==r))][0]
+            # Operate
+            _ = own_tech + los_tech
+            # Remove LOS tech
+            self._techs.remove(los_tech)
+
+    def build_RES(self) -> list[Technology]:
+        """Reduce RES.
+
+        """
+        techs = self.fill_RES()
+        self.sum_prim_loss_tech(techs)
+        self.sum_sec_loss_tech(techs)
+
+        return self._techs
 
 
 def set_region(country: str) -> str:
@@ -866,5 +945,4 @@ def set_technology_labels(name: str) -> str:
 
 
 if __name__ == "__main__":
-    matrix = EnergyMatrix()
-    matrix.RES_data("./data/matrix.xlsx")
+    pass
