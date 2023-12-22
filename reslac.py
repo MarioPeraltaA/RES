@@ -711,7 +711,7 @@ class EnergyMatrix():
                         if all((T.code=="OWN", T.region==r))][0]
             los_tech = [T for T in techs
                         if all((T.code=="LOS", T.region==r))][0]
-            # Operate
+            # Operate: Update OWN
             _ = own_tech + los_tech
             # Remove LOS tech
             self._techs.remove(los_tech)
