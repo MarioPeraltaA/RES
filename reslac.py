@@ -55,10 +55,12 @@ class Technology():
         return self_ft == other_ft
 
     def __add__(self, other):
-        """LOSTEC: LOS001, LOS002.
+        """Operate TEC.
 
+        Useful for LOSTEC: LOS001, LOS002.
+        Note: ``self`` prevails over ``other``.
         """
-        if type(self) == type(other):
+        if type(self) is type(other):
             # Operate
             s_code = self.code
             o_code = other.code
@@ -159,6 +161,7 @@ class Fuel():
         self_ft = {m_type, m_c, m_r}
         other_ft = {n_type, n_c, n_r}
         return self_ft == other_ft
+
 
 class Primary_Fuel(Fuel):
 
@@ -368,9 +371,7 @@ class EnergyMatrix():
                  category: str,
                  matrix_df: pd.DataFrame,
                  n: int) -> Technology:
-        """Creat and add technology instance.
- 
-        """
+        """Create and add technology instance."""
         # Primary tech
         if category in {"SUP", "LOS001"}:
             tech = self.set_prim_tech(tech_code,
@@ -387,7 +388,6 @@ class EnergyMatrix():
                                       matrix_df,
                                       n)
 
-
         # Demand tech
         elif category in {"DEM", "LOS002"}:
             tech = self.set_demand_tech(tech_code,
@@ -403,7 +403,7 @@ class EnergyMatrix():
         return prim_fuel
 
     def add_sec_fuel(self, code, energy, region) -> Second_Fuel:
-        sec_fuel =  Second_Fuel(code, energy, region)
+        sec_fuel = Second_Fuel(code, energy, region)
         self.fuels.append(sec_fuel)
         return sec_fuel
 
@@ -434,9 +434,7 @@ class EnergyMatrix():
         pass
 
     def split_flow(self) -> None:
-        """UPS002 input and output fuels.
-
-        """
+        """UPS002 input and output fuels."""
         techs = self.techs
         conv_techs = [t for t in techs if t.category == "UPS002"]
         for c in conv_techs:
@@ -448,9 +446,7 @@ class EnergyMatrix():
                     f.energy_PJ = 0
 
     def obj_labels(self) -> list[tuple[str]]:
-        """Set objects labels to be instanced.
-
-        """
+        """Set objects labels to be instantiated."""
         dict_df = self.read_base()
         # Iterate over data
         for country, matrix_df in dict_df.items():
@@ -478,9 +474,7 @@ class EnergyMatrix():
         return self.labels
 
     def add_ifuel(self, sector, fuel_code, region) -> Fuel:
-        """Initial fuels.
-
-        """
+        """Initialize fuels."""
         energy = 0   # Initial value
         if sector == "FUE001":
             fuel = Primary_Fuel(fuel_code, energy, region)
@@ -496,6 +490,7 @@ class EnergyMatrix():
                   category,
                   tech_code,
                   region) -> Technology:
+        """Initialzile technologies."""
         # Primary tech
         if category in {"SUP", "LOS001"}:
             tech = Primary_Tech(tech_code, region, category)
@@ -555,14 +550,14 @@ class EnergyMatrix():
             # Input: for negative values of FUE002
             in_filter = {tech_code, "FUE001", "FUE002", region}
             in_fuels = list({ft for ft in obj_labels
-                          if {ft[1], ft[2], ft[-1]}.issubset(in_filter)})
+                            if {ft[1], ft[2], ft[-1]}.issubset(in_filter)})
             in_fuels = [self.add_ifuel(s, f, r)
                         for _, _, s, f, r in in_fuels]
             tech.in_fuels = in_fuels
             # Output: for positive values of FUE002
             out_filter = {tech_code, "FUE002", region}
             out_fuels = list({ft for ft in obj_labels
-                          if {ft[1], ft[2], ft[-1]}.issubset(out_filter)})
+                              if {ft[1], ft[2], ft[-1]}.issubset(out_filter)})
             out_fuels = [self.add_ifuel(s, f, r)
                          for _, _, s, f, r in out_fuels]
             tech.out_fuels = out_fuels
@@ -588,7 +583,6 @@ class EnergyMatrix():
     def dem_tech_flow(self,
                       tech: Technology,
                       obj_labels: list[tuple[str]]) -> Demand_Tech:
-
         # Income only
         tech_code = tech.code
         region = tech.region
@@ -598,20 +592,19 @@ class EnergyMatrix():
                      "FUE003",
                      region}
         in_fuels = list({ft for ft in obj_labels
-                     if {ft[1], ft[2], ft[-1]}.issubset(in_filter)})
+                        if {ft[1], ft[2], ft[-1]}.issubset(in_filter)})
         in_fuels = [self.add_ifuel(s, f, r)
                     for _, _, s, f, r in in_fuels]
         tech.in_fuels = in_fuels
         return tech
 
     def initital_RES(self) -> list[Technology]:
-        """Instances.
+        """Instantiate with initial values.
 
         Initial RES with space in memory for those
         technology that has some capacities to describe
         somehow the energy system.
         It initializes fuel flows in zero.
-
         """
         obj_labels = self.obj_labels()
         # Filter techs
@@ -630,11 +623,10 @@ class EnergyMatrix():
         return self._techs
 
     def data_RES(self) -> list[Technology]:
-        """It intances all possible fuels.
+        """Instantiate all possible fuels.
 
         It reads throughout the Energetic
         Balance Matrix data.
-
         """
         dict_df = self.read_data()
         # Iterate over data
@@ -657,11 +649,10 @@ class EnergyMatrix():
         return self.techs
 
     def fill_RES(self) -> list[Technology]:
-        """Update energy flow attributes.
+        """Merge energy flow attributes.
 
-        It sets the actual values of flowing fuels
-        per country. Merge.
-
+        It updates the initial values of flowing fuels per country
+        with the actual in the balance matrix.
         """
         itechs = self.initital_RES()
         techs = self.data_RES()
@@ -689,28 +680,30 @@ class EnergyMatrix():
         return itechs
 
     def sum_prim_loss_tech(self, techs: list) -> None:
+        """Operate primary loss technology: LOS001."""
         # Filter regions
         regions = list({T.region for T in techs})
         # Operate WAS & INV techs for each region
         for r in regions:
             was_tech = [T for T in techs
-                        if all((T.code=="WAS", T.region==r))][0]
+                        if all((T.code == "WAS", T.region == r))][0]
             inv_tech = [T for T in techs
-                        if all((T.code=="INV", T.region==r))][0]
+                        if all((T.code == "INV", T.region == r))][0]
             # Operate
             _ = was_tech + inv_tech
             # Remove INV tech
             self._techs.remove(inv_tech)
 
     def sum_sec_loss_tech(self, techs: list) -> None:
+        """Operate secondary loss technology: LOS002."""
         # Filter regions
         regions = list({T.region for T in techs})
         # Operate OWN & LOS techs for each region
         for r in regions:
             own_tech = [T for T in techs
-                        if all((T.code=="OWN", T.region==r))][0]
+                        if all((T.code == "OWN", T.region == r))][0]
             los_tech = [T for T in techs
-                        if all((T.code=="LOS", T.region==r))][0]
+                        if all((T.code == "LOS", T.region == r))][0]
             # Operate: Update OWN
             _ = own_tech + los_tech
             # Remove LOS tech
@@ -719,6 +712,7 @@ class EnergyMatrix():
     def build_RES(self) -> list[Technology]:
         """Reduce RES.
 
+        Operate both LOS001 & LOS002 technologies.
         """
         techs = self.fill_RES()
         self.sum_prim_loss_tech(techs)
