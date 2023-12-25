@@ -130,7 +130,7 @@ class Input_Data():
     ) -> list[str]:
         """Label as <REG><FUE>.
 
-        Similar as :py:meth:`osemodel.get_tech_labels`
+        Similar as :py:meth:`oseinput.get_tech_labels`
         it generates the labels for each fuel
         of the LAC system.
 
@@ -179,7 +179,7 @@ class Input_Data():
     ) -> list[tuple]:
         """Get energy of demanded fuel.
 
-        Similar to :py:meth:`osemodel.__label_dem_tech`.
+        Similar to :py:meth:`oseinput.__label_dem_tech`.
         Income energy amount of technology the demands fuel.
         """
         dem_fields = []
@@ -242,6 +242,33 @@ class Input_Data():
     ) -> tuple[dict]:
         """Call private methods of each parameter.
 
+        Note: Names longer than **31** characters require a
+        ``short_name`` field.
+        This is due to character limits on excel sheet names.
+        ``otoole`` will raise an error if a ``short_name``
+        is not provided in these instances.
+
+        Long ``parameter`` type with short_name
+        =======================================
+
+        TotalAnnualMaxCapacityInvestment:
+            short_name: TotalAnnualMaxCapacityInvestmen
+
+        TotalAnnualMinCapacityInvestment:
+            short_name: TotalAnnualMinCapacityInvestmen
+
+        TotalTechnologyAnnualActivityLowerLimit:
+            short_name: TotalTechnologyAnnualActivityLo
+
+        TotalTechnologyAnnualActivityUpperLimit:
+            short_name: TotalTechnologyAnnualActivityUp
+
+        TotalTechnologyModelPeriodActivityLowerLimit:
+            short_name: TotalTechnologyModelPeriodActLo
+
+        TotalTechnologyModelPeriodActivityUpperLimit:
+            short_name: TotalTechnologyModelPeriodActUp
+
         parameters = [
             'AccumulatedAnnualDemand', 'AnnualEmissionLimit',
             'AnnualExogenousEmission', 'AvailabilityFactor',
@@ -275,12 +302,33 @@ class Input_Data():
             'TotalTechnologyModelPeriodActLo',
             'TotalTechnologyModelPeriodActUp', 'TradeRoute',
             'VariableCost', 'YearSplit'
-        ].
+        ]
+
+        Long ``result`` type with short_name
+        ====================================
+
+        DiscountedTechnologyEmissionsPenalty:
+            short_name: DiscountedTechEmissionsPenalty
+
+        RateOfProductionByTechnologyByMode:
+            short_name: RateOfProductionByTechByMode
+
+        TotalAnnualTechnologyActivityByMode:
+            short_name: TotalAnnualTechActivityByMode
+
+        TotalTechnologyModelPeriodActivity:
+            short_name: TotalTechModelPeriodActivity
+
+        Note: ``result`` type are missing in the OSeInputData.xlsx but
+        not in ``config.yaml``. Moreover, When referencing set indices
+        in ``config.yaml``
+        use the full name, not the ``short_name``.
+
         """
         accumulated_annual_demand = self.__accumulated_annual_demand(res=res)
         return (accumulated_annual_demand, )
 
-    def write_excel_osemodel(self, data: dict) -> None:
+    def write_excel_oseinput(self, data: dict) -> None:
         """Osemosys structure.
 
         It generates a ``*.xlsx`` file with the
@@ -322,7 +370,7 @@ class Input_Data():
 
         # Generate file
         # -------------
-        self.write_excel_osemodel(data=ose_data)
+        self.write_excel_oseinput(data=ose_data)
         return ose_data
 
 
