@@ -16,7 +16,7 @@ import pandas as pd
 class Input_Data():
 
     def __init__(self):
-        ose_model = {}
+        ose_input = {}
 
     def call_reslac(self) -> reslac.EnergyMatrix:
         matrix = reslac.EnergyMatrix()
@@ -44,7 +44,7 @@ class Input_Data():
         Tcode = prim_tech.code
         for f in prim_tech.out_fuels:
             outFcode = f.code
-            Tlabel = f"{region}&{Tcode}{outFcode}"
+            Tlabel = f"{region}&{Tcode}&{outFcode}"
             Tlabels_prim.add(Tlabel)
 
         return Tlabels_prim
@@ -59,11 +59,11 @@ class Input_Data():
         Tcode = conv_tech.code
         for f in conv_tech.out_fuels:
             outFcode = f.code
-            Tlabel = f"{region}&{Tcode}{outFcode}"
+            Tlabel = f"{region}&{Tcode}&{outFcode}"
             Tlabels_conv.add(Tlabel)
         for f in conv_tech.in_fuels:
             inFcode = f.code
-            Tlabel = f"{region}&{Tcode}{inFcode}"
+            Tlabel = f"{region}&{Tcode}&{inFcode}"
             Tlabels_conv.add(Tlabel)
 
         return Tlabels_conv
@@ -79,15 +79,15 @@ class Input_Data():
         for f in dem_tech.in_fuels:
             inFcode = f.code
             # Add "DEM" code
-            Tlabel = f"{region}&DEM{Tcode}{inFcode}"
+            Tlabel = f"{region}&DEM{Tcode}&{inFcode}"
             Tlabels_dem.add(Tlabel)
 
         return Tlabels_dem
 
-    def get_tech_labels(
+    def get_tech_fuel_fields(
             self, techs: list[reslac.Technology]
     ) -> list[str]:
-        """Label as <REG>&<TEC><FUE>.
+        """Label as <REG>&<TEC>&<FUE>.
 
         It distributes (unpacks) the technology code to each
         output or input fuel code to generate the
@@ -125,23 +125,52 @@ class Input_Data():
         Tlabels = Tlabels_prim + Tlabels_conv + Tlabels_dem
         return Tlabels
 
-    def get_fuel_labels(
-            self, fuels: list
-    ) -> list[str]:
-        """Label as <REG><FUE>.
+    def __set_region(self, set_fields: list) -> list:
+        """Define SET: REGION.
 
-        Similar as :py:meth:`oseinput.get_tech_labels`
-        it generates the labels for each fuel
-        of the LAC system.
-
+        Split and label as: <REG>.
         """
-        pass
+        regions = list({r.split("&")[0] for r in set_fields})
+        regions.sort()
+        return regions
+
+    def __set_fuel(self, set_fields: list) -> list:
+        """Define SET: FUEL.
+
+        Split and label as: <REG><FUE>.
+        """
+        fuels = set()
+        for fiels in set_fields:
+            r_code, _, f_code = fiels.split("&")
+            fuel_label = f"{r_code}{f_code}"
+            fuels.add(fuel_label)
+
+        fuels = list(fuels)
+        fuels.sort()
+        return fuels
+
+    def __set_technology(self, set_fields: list) -> list:
+        """Define SET: TECHNOLOGY.
+
+        Split and label as: <REG><TEC><FUE>.
+        """
+        techs = set()
+        for fiels in set_fields:
+            r_code, t_code, f_code = fiels.split("&")
+            tech_label = f"{r_code}{t_code}{f_code}"
+            techs.add(tech_label)
+
+        techs = list(techs)
+        techs.sort()
+        return techs
 
     def set_sets(
             self,
-            res: reslac.EnergyMatrix
+            res: reslac.EnergyMatrix,
     ) -> tuple[list]:
-        """Define SETS of the model.
+        """Call private methods of each SET.
+
+        Define SETS (indices) of the model.
 
         sets = [
             "YEAR",
@@ -158,20 +187,11 @@ class Input_Data():
         ].
         """
         techs = res._techs
-        fuels = res._fuels
-        Tlabels = self.get_tech_labels(techs)
-        regions = list({T.region for T in techs})
-        regions.sort()
-        Tcodes = []
-        Fcodes = []
-        # Sort by region
-        for r in regions:
-            f = [f"{r}{F.code}" for F in fuels if F.region == r]
-            t = [T.replace("&", "") for T in Tlabels if r in T]
-            Tcodes += t
-            Fcodes += f
-
-        return (Tcodes, Fcodes, regions)
+        set_fields = self.get_tech_fuel_fields(techs)
+        region_col = self.__set_region(set_fields=set_fields)
+        tech_col = self.__set_technology(set_fields=set_fields)
+        fuel_col = self.__set_fuel(set_fields=set_fields)
+        return (region_col, tech_col, fuel_col)
 
     def dem_tech_energy(
             self,
@@ -249,7 +269,7 @@ class Input_Data():
         is not provided in these instances.
 
         Long ``parameter`` type with short_name
-        =======================================
+        ---------------------------------------
 
         TotalAnnualMaxCapacityInvestment:
             short_name: TotalAnnualMaxCapacityInvestmen
@@ -305,7 +325,7 @@ class Input_Data():
         ]
 
         Long ``result`` type with short_name
-        ====================================
+        ------------------------------------
 
         DiscountedTechnologyEmissionsPenalty:
             short_name: DiscountedTechEmissionsPenalty
@@ -351,15 +371,15 @@ class Input_Data():
         # ---------
         res = self.call_reslac()
         ose_data = self.call_template()
-        Tcode, Fcode, regions = self.set_sets(res=res)
+        regions, tech_col, fuel_col, = self.set_sets(res=res)
         parameters = self.set_parameters(res=res)
         accumulated_annual_demand = parameters[0]
 
         # Populate
         # --------
         # SETS
-        ose_data["TECHNOLOGY"]["VALUE"] = Tcode
-        ose_data["FUEL"]["VALUE"] = Fcode
+        ose_data["TECHNOLOGY"]["VALUE"] = tech_col
+        ose_data["FUEL"]["VALUE"] = fuel_col
         ose_data["REGION"]["VALUE"] = regions
         # PATAMETERS
         sheet01 = "AccumulatedAnnualDemand"
@@ -375,5 +395,5 @@ class Input_Data():
 
 
 if __name__ == "__main__":
-    ose_model = Input_Data()
-    ose_data = ose_model.fill_structure()
+    input_data = Input_Data()
+    ose_input = input_data.fill_structure()
